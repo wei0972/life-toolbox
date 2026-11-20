@@ -1,0 +1,57 @@
+/* 全站共用外殼與設計變數（暖陽） */
+:root{
+  --bg:#FDF6EA;--ink:#5A4636;--muted:#7A634F;--org:#E08A5B;--org-dark:#B96A3E;--mint:#A8DCD1;
+  --panel:#FFFBF3;--edge:#F2E2C8;--on-org:#3B2A1E;--warn-bg:#FDECE8;--warn:#9B2F20;--focus:#2563eb;
+  --font:"Microsoft JhengHei","Noto Sans TC","PingFang TC","Heiti TC",system-ui,sans-serif;
+  --mono:"Cascadia Mono",Consolas,"SF Mono",Menlo,"Courier New",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;background:var(--bg)}
+body{font:16px/1.55 var(--font);background:var(--bg);color:var(--ink);min-height:100vh;padding-bottom:40px;overflow-wrap:anywhere}
+ul,ol{list-style:none}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:8px;top:-60px;background:#fff;padding:10px 14px;border-radius:12px;z-index:50}
+.skip:focus{top:8px}
+.amt{font-variant-numeric:tabular-nums;white-space:nowrap}
+.muted{color:var(--muted)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:10px 20px;font-weight:700;border:2px solid transparent;border-radius:999px;background:#fff;text-decoration:none;line-height:1.2}
+.btn.primary{background:var(--org);color:var(--on-org);box-shadow:0 4px 0 var(--org-dark)}
+.btn.primary:active{transform:translateY(2px);box-shadow:0 2px 0 var(--org-dark)}
+.btn.ghost{background:#fff;border-color:var(--org)}
+.btn.danger{background:#fff;border-color:var(--warn);color:var(--warn)}
+.btn.small{min-height:44px;padding:6px 16px;font-size:15px}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.5;box-shadow:none}
+
+.sec{background:var(--panel);border:2px solid var(--edge);border-radius:26px;padding:18px;margin-bottom:16px;box-shadow:0 8px 22px rgba(90,70,54,.08)}
+.sec-title{font-size:18px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.sec-title::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--org);flex:none}
+
+.field label,label.lbl{display:block;font-weight:700;font-size:15px;margin-bottom:4px}
+input[type="text"],input[type="search"],input[type="date"],input:not([type]),select{width:100%;min-height:48px;padding:8px 14px;border:2px solid var(--edge);border-radius:16px;background:#fff}
+input:focus-visible,select:focus-visible{border-color:var(--org)}
+
+dialog{border:2px solid var(--edge);border-radius:26px;background:var(--panel);color:var(--ink);padding:0;width:min(560px,calc(100vw - 20px));max-height:calc(100dvh - 20px);margin:auto;box-shadow:0 24px 60px rgba(59,42,30,.35)}
+dialog[open]{display:flex;flex-direction:column;overflow:hidden;animation:pop .16s ease-out}
+dialog::backdrop{background:rgba(59,42,30,.5)}
+.dlg-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px 8px}
+.dlg-head h2{font-size:20px;font-weight:800}
+.dlg-x{width:44px;height:44px;border-radius:50%;border:2px solid var(--edge);background:#fff;font-size:22px;line-height:1;flex:none}
+.dlg-body{padding:8px 18px 14px;overflow-y:auto;flex:1 1 auto;min-height:0}
+.dlg-head,.dlg-foot{flex:none}
+dialog form{display:flex;flex-direction:column;min-height:0;max-height:calc(100dvh - 20px)}
+.dlg-foot{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;padding:12px 18px 16px;border-top:2px dashed var(--edge)}
+.err{color:var(--warn);background:var(--warn-bg);border-radius:14px;padding:10px 12px;font-size:15px;font-weight:600}
+
+#toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);max-width:min(440px,calc(100vw - 32px));background:var(--ink);color:#FFFBF3;border-radius:999px;padding:10px 20px;font-weight:700;font-size:15px;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;text-align:center}
+#toast.show{opacity:1}
+
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}

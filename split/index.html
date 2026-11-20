@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="description" content="聚餐、出遊後算誰該給誰多少。不用下載、不用登入、沒有廣告，資料只留在你的手機。">
+<title>多人分帳</title>
+<link rel="stylesheet" href="../shared/shell.css?v=20261120201636">
+<link rel="stylesheet" href="split.css?v=20261120201636">
+</head>
+<body>
+<a class="skip" href="#main">跳到主要內容</a>
+<div id="app"></div>
+<noscript><p style="padding:16px">需要開啟 JavaScript 才能使用。</p></noscript>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<dialog id="dlgText" aria-labelledby="dtTitle">
+  <form method="dialog" id="dtForm" novalidate>
+    <div class="dlg-head"><h2 id="dtTitle"></h2><button type="button" class="dlg-x" data-close aria-label="關閉">&times;</button></div>
+    <div class="dlg-body">
+      <p id="dtNote" class="dlg-note" hidden></p>
+      <label for="dtInput" id="dtLabel" class="lbl"></label>
+      <input id="dtInput" type="text" autocomplete="off" maxlength="40">
+      <div class="field" id="dtDateWrap" hidden style="margin-top:12px">
+        <label for="dtDate">活動日期</label>
+        <input id="dtDate" type="date">
+      </div>
+      <p id="dtErr" class="err" role="alert" hidden></p>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn danger" id="dtRemove" hidden>移除</button>
+      <button type="button" class="btn ghost" data-close>取消</button>
+      <button type="submit" class="btn primary" id="dtOk">確定</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgConfirm" aria-labelledby="dcTitle" aria-describedby="dcBody">
+  <form method="dialog">
+    <div class="dlg-head"><h2 id="dcTitle"></h2></div>
+    <div class="dlg-body"><p id="dcBody"></p></div>
+    <div class="dlg-foot">
+      <button type="button" class="btn ghost" data-close id="dcCancel">取消</button>
+      <button type="submit" class="btn primary" id="dcOk" value="ok">確定</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgGone" aria-labelledby="dgTitle" aria-describedby="dgBody">
+  <form method="dialog">
+    <div class="dlg-head"><h2 id="dgTitle"></h2></div>
+    <div class="dlg-body"><p id="dgBody"></p></div>
+    <div class="dlg-foot">
+      <button type="submit" class="btn ghost" id="dgDrop" value="drop">不用了</button>
+      <button type="submit" class="btn primary" id="dgKeep" value="keep">留下來</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgExp"aria-labelledby="exTitle">
+  <form method="dialog" id="exForm" novalidate>
+    <div class="dlg-head"><h2 id="exTitle">新增支出</h2><button type="button" class="dlg-x" data-close aria-label="關閉">&times;</button></div>
+    <div class="dlg-body">
+      <div class="field">
+        <label for="exName">這筆是什麼</label>
+        <input id="exName" type="text" maxlength="60" autocomplete="off" placeholder="例如：晚餐">
+      </div>
+      <div class="field">
+        <label for="exAmt">金額（元）</label>
+        <input id="exAmt" type="text" inputmode="numeric" autocomplete="off" placeholder="例如：1,200" aria-describedby="exAmtErr">
+        <p id="exAmtErr" class="field-err" hidden></p>
+      </div>
+      <div class="field">
+        <label for="exPayer">誰先付的</label>
+        <select id="exPayer"></select>
+      </div>
+      <fieldset class="split">
+        <legend>分給誰</legend>
+        <div class="seg two" role="radiogroup" aria-label="一起分的算法">
+          <label class="seg-opt"><input type="radio" name="exMode" value="equal" checked><span>平均分</span></label>
+          <label class="seg-opt"><input type="radio" name="exMode" value="shares"><span>依份數分</span></label>
+        </div>
+        <p class="hint" id="exHint">每位成員選「不參與」「一起分」或「固定金額」。</p>
+        <div id="exRows"></div>
+      </fieldset>
+      <section class="preview" aria-live="polite" aria-label="這筆怎麼分">
+        <div id="exPreview"></div>
+      </section>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn ghost" data-close>取消</button>
+      <button type="button" class="btn ghost" id="exDraft" hidden>先存成草稿</button>
+      <button type="submit" class="btn primary" id="exOk">完成</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgCard" aria-labelledby="ckTitle">
+  <form method="dialog">
+    <div class="dlg-head"><h2 id="ckTitle">結算卡</h2><button type="button" class="dlg-x" data-close aria-label="關閉">&times;</button></div>
+    <div class="dlg-body">
+      <div class="seg two" role="radiogroup" aria-label="結算卡樣式">
+        <label class="seg-opt"><input type="radio" name="ckKind" value="compact" checked><span>精簡版</span></label>
+        <label class="seg-opt"><input type="radio" name="ckKind" value="detail"><span>明細版</span></label>
+      </div>
+      <p class="hint" id="ckHint"></p>
+      <div class="cardview" tabindex="0" aria-label="結算卡預覽，可捲動"><img id="ckImg" alt=""></div>
+      <p class="hint">圖上有成員暱稱和金額，傳出去前請先看一眼。</p>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn ghost" data-close>關閉</button>
+      <button type="button" class="btn ghost" id="ckShare" hidden>分享</button>
+      <button type="button" class="btn primary" id="ckSave">存成圖片</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module" src="app.js?v=20261120201636"></script>
+</body>
+</html>

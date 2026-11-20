@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>小工具箱</title>
+<link rel="stylesheet" href="shared/shell.css?v=20261120201636">
+<style>
+.home{max-width:520px;margin:0 auto;padding:28px 16px 0}
+.logo{width:48px;height:48px;border-radius:50%;background:var(--org);box-shadow:0 0 0 7px var(--mint);flex:none}
+.top{display:flex;align-items:center;gap:18px;margin-bottom:22px}
+.top h1{font-size:28px;font-weight:800;letter-spacing:.04em;line-height:1.2}
+.tag{font-size:19px;font-weight:700;line-height:1.5;margin-bottom:6px}
+.pill{display:inline-block;background:rgba(168,220,209,.55);border-radius:999px;padding:8px 16px;font-size:15px;margin-bottom:24px}
+.tool{display:flex;align-items:center;gap:16px;text-decoration:none;background:var(--org);color:var(--on-org);border-radius:26px;padding:20px;box-shadow:0 8px 22px rgba(90,70,54,.14);margin-bottom:16px}
+.tool .ico{width:56px;height:56px;border-radius:18px;background:var(--mint);display:grid;place-items:center;font-size:26px;font-weight:800;flex:none}
+.tool b{display:block;font-size:22px}
+.tool span{font-size:15px;font-weight:600}
+.tool .go{margin-left:auto;font-size:28px;font-weight:800}
+.soon{border:2px dashed var(--org);border-radius:26px;padding:18px;text-align:center;color:var(--muted);font-weight:700}
+</style>
+</head>
+<body>
+<main class="home" id="main">
+  <div class="top"><span class="logo" aria-hidden="true"></span><h1 data-brand>小工具箱</h1></div>
+  <p class="tag">生活裡的小麻煩，打開網頁就能算。</p>
+  <p class="pill">免費、無廣告、不用登入，資料只留在你的手機</p>
+  <a class="tool" href="split/index.html">
+    <span class="ico" aria-hidden="true">分</span>
+    <span><b>多人分帳</b><span>聚餐、出遊後，算誰該給誰多少</span></span>
+    <span class="go" aria-hidden="true">&rsaquo;</span>
+  </a>
+  <p class="soon">更多工具準備中</p>
+</main>
+<noscript><p style="padding:16px">需要開啟 JavaScript 才能使用。</p></noscript>
+<script type="module">
+import { BRAND } from './shared/shell.js';
+document.title = BRAND;
+</script>
+</body>
+</html>
