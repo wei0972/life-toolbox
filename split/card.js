@@ -2,8 +2,9 @@
  * 結算卡：用 canvas 直接畫成圖片（收據造型，奶油色系）。寬固定 1080 像素。
  * 精簡版 1080x1350（內容太多時自動縮小字級、再不夠才加高）；明細版高度依內容增加。
  */
-import { formatMoney } from './explain.js?v=20261120201636';
-import { BRAND } from '../shared/shell.js?v=20261120201636';
+import { formatMoney } from './explain.js?v=20261121093330';
+import { partLabel } from './quick.js?v=20261121093330';
+import { BRAND } from '../shared/shell.js?v=20261121093330';
 
 export const CARD_WIDTH = 1080;
 export const COMPACT_HEIGHT = 1350;
@@ -425,6 +426,253 @@ export function renderCard(activity, result, kind) {
   spaced(ctx, 4);
   ctx.fillText(BRAND, CARD_WIDTH / 2 + 2, fy + 62);
   spaced(ctx, 0);
+  return canvas;
+}
+
+/* ---------- 現場算錢（第二版）的結算卡 ---------- */
+
+const money = formatMoney;
+
+/** 還沒填完、算不出這個情況：不可把平分金額當成答案顯示或印出 */
+export function quickWaiting(res) {
+  if (!res || !res.ok) return false;
+  if (res.incomplete) return true;
+  return res.mode === 'parts' && Array.isArray(res.parts) && res.parts.length === 0;
+}
+
+const eachWord = (n) => (n === 1 ? '付' : '各付');
+
+/**
+ * 一張帳單的結果文字，畫面與結算卡共用。
+ * 回傳 { rows:[{role,count,amount,partId?,label,big}], notes:[{kind,text}], diff:{text,diff} }；金額 0 的列 amount 為 null（寫「不用付」）
+ */
+export function quickLines(bill, res) {
+  const rows = [];
+  const coverMode = res.rows.some((r) => r.role === 'cover');
+  const hasParts = !!(res.parts && res.parts.length > 0);
+  for (const r of res.rows) {
+    const zero = r.amount === 0 && r.role !== 'free';
+    let label;
+    if (r.role === 'each') {
+      if (res.mode === 'even' || res.incomplete) label = zero ? '每人不用付' : '每人';
+      else if (res.mode === 'free' && !coverMode) label = zero ? r.count + ' 人不用付' : r.count + ' 人' + eachWord(r.count);
+      else label = zero ? '其餘 ' + r.count + ' 人不用付' : '其餘 ' + r.count + ' 人' + eachWord(r.count);
+    } else if (r.role === 'base') {
+      label = zero ? '沒分到任何一筆的人不用付' : hasParts ? '每人先付' : '每人';
+    } else if (r.role === 'add') {
+      label = '有分' + partLabel(bill, r.partId) + '的 ' + r.count + ' 人，' + (zero ? '不用再加' : '每人再加');
+    } else if (r.role === 'cover') {
+      label = zero ? '幫忙付的 ' + r.count + ' 人不用付' : '幫忙付的 ' + r.count + ' 人' + eachWord(r.count);
+    } else if (r.role === 'free') {
+      label = r.count + ' 人不用付';
+    } else {
+      label = zero ? r.count + ' 人不用付' : r.count + ' 人' + eachWord(r.count);
+    }
+    rows.push({
+      role: r.role, count: r.count, amount: r.role === 'free' || zero ? null : r.amount,
+      partId: r.partId, label, big: res.rows.length === 1,
+    });
+  }
+  const notes = [];
+  if (res.combined) {
+    const c = res.combined;
+    let t = '也就是：有分的 ' + c.withCount + ' 人' + eachWord(c.withCount) + ' ' + money(c.withAmount) + ' 元';
+    if (c.withoutCount > 0) {
+      t += c.withoutAmount === 0 ? '，沒分的 ' + c.withoutCount + ' 人不用付'
+        : '，沒分的 ' + c.withoutCount + ' 人' + eachWord(c.withoutCount) + ' ' + money(c.withoutAmount) + ' 元';
+    }
+    notes.push({ kind: 'combined', text: t });
+  } else if (res.parts && res.parts.length >= 2) {
+    notes.push({ kind: 'multi', text: '每個人把自己有分到的加上去，就是要付的金額' });
+  }
+  for (const id of res.skipped || []) notes.push({ kind: 'skipped', text: partLabel(bill, id) + '還沒填完，先不算' });
+  if (res.incomplete) notes.push({ kind: 'incomplete', text: '還沒填完，先照平分算' });
+  let dt = '全部收齊 ' + money(res.collected) + ' 元，';
+  if (res.diff > 0) dt += '還差 ' + money(res.diff) + ' 元，由付錢的人補';
+  else if (res.diff < 0) dt += '比帳單多 ' + money(-res.diff) + ' 元';
+  else dt += '剛好';
+  return { rows, notes, diff: { text: dt, diff: res.diff } };
+}
+
+function wrapChars(ctx, text, maxW) {
+  const lines = [];
+  let cur = '';
+  for (const ch of Array.from(text)) {
+    if (cur && ctx.measureText(cur + ch).width > maxW) {
+      lines.push(cur);
+      cur = ch;
+    } else cur += ch;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+const Q_FOOT_H = 170;
+
+function qlayout(ctx, rec, items, sum, draw) {
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  spaced(ctx, 0);
+  let y = PAPER_X + 64;
+  if (draw) {
+    ctx.fillStyle = C.muted;
+    font(ctx, 600, 30, SANS);
+    ctx.textAlign = 'center';
+    spaced(ctx, 12);
+    ctx.fillText('結算', CARD_WIDTH / 2 + 6, y + 26);
+    spaced(ctx, 0);
+    let size = 68;
+    font(ctx, 800, size, SANS);
+    while (size > 42 && ctx.measureText(rec.title).width > 600) {
+      size -= 4;
+      font(ctx, 800, size, SANS);
+    }
+    ctx.fillStyle = C.ink;
+    ctx.fillText(fit(ctx, rec.title, 600), CARD_WIDTH / 2, y + 138);
+    ctx.textAlign = 'left';
+  }
+  y += 190;
+  if (draw) dashed(ctx, y);
+  y += 40;
+
+  items.forEach((it, idx) => {
+    const many = items.length > 1;
+    y = sectionHead(ctx, many ? '第 ' + it.no + ' 張帳單' : '這筆帳單', y, draw);
+    if (draw) {
+      ctx.fillStyle = C.ink;
+      ctx.textAlign = 'left';
+      font(ctx, 800, 36, SANS);
+      ctx.fillText(it.res.people + ' 人，總金額', L, y + 40);
+      ctx.textAlign = 'right';
+      font(ctx, 800, 56, MONO);
+      ctx.fillText(formatMoney(it.res.total), R, y + 44);
+      ctx.textAlign = 'left';
+    }
+    y += 84;
+    if (it.waiting) {
+      if (draw) {
+        ctx.fillStyle = C.stamp;
+        ctx.textAlign = 'left';
+        font(ctx, 800, 44, SANS);
+        ctx.fillText('還沒填完', L, y + 52);
+        font(ctx, 600, 27, SANS);
+        ctx.fillStyle = C.muted;
+        ctx.fillText('這張帳單還算不出每人要付多少', L, y + 96);
+      }
+      y += 126;
+      y += 22;
+      if (idx < items.length - 1 || sum) {
+        if (draw) dashed(ctx, y);
+        y += 40;
+      }
+      return;
+    }
+    const lines = it.lines;
+    lines.rows.forEach((r, i) => {
+      const amtText = r.amount === null ? '' : formatMoney(r.amount);
+      const size = r.big ? 76 : 48;
+      font(ctx, 800, size, MONO);
+      const aw = r.amount === null ? 0 : ctx.measureText(amtText).width + 56;
+      const lblSize = r.big ? 44 : 33;
+      font(ctx, 700, lblSize, SANS);
+      const label = fit(ctx, r.label, W - aw - 24);
+      const rowH = r.big ? 112 : 78;
+      if (draw) {
+        ctx.fillStyle = C.ink;
+        ctx.textAlign = 'left';
+        font(ctx, 700, lblSize, SANS);
+        ctx.fillText(label, L, y + rowH * 0.66);
+        if (r.amount !== null) {
+          ctx.textAlign = 'right';
+          font(ctx, 700, 30, SANS);
+          ctx.fillText('元', R, y + rowH * 0.66);
+          font(ctx, 800, size, MONO);
+          ctx.fillText(amtText, R - 46, y + rowH * 0.66);
+          ctx.textAlign = 'left';
+        }
+        if (i < lines.rows.length - 1) dotted(ctx, L, R, y + rowH - 2);
+      }
+      y += rowH;
+    });
+    const notes = lines.notes.concat([{ kind: 'diff', text: lines.diff.text }]);
+    y += 10;
+    for (const n of notes) {
+      font(ctx, 600, 27, SANS);
+      for (const ln of wrapChars(ctx, n.text, W)) {
+        if (draw) {
+          ctx.fillStyle = C.muted;
+          font(ctx, 600, 27, SANS);
+          ctx.fillText(ln, L, y + 26);
+        }
+        y += 38;
+      }
+    }
+    y += 22;
+    if (idx < items.length - 1 || sum) {
+      if (draw) dashed(ctx, y);
+      y += 40;
+    }
+  });
+
+  if (sum) {
+    y = sectionHead(ctx, '每人合計', y, draw);
+    if (draw) {
+      ctx.fillStyle = C.ink;
+      ctx.textAlign = 'left';
+      font(ctx, 800, 40, SANS);
+      ctx.fillText(sum.people + ' 人，每人', L, y + 56);
+      ctx.textAlign = 'right';
+      font(ctx, 700, 34, SANS);
+      ctx.fillText('元', R, y + 56);
+      font(ctx, 800, 80, MONO);
+      ctx.fillText(formatMoney(sum.each), R - 50, y + 56);
+      ctx.textAlign = 'left';
+    }
+    y += 100;
+  }
+  return y;
+}
+
+/**
+ * 畫現場算錢的結算卡：收據造型，寬 1080、高至少 1350，內容多就加高。
+ * record：帶 quick 的活動（用到 title）；computed：computeRecord(record.quick) 的結果。
+ * 呼叫前請先 await fontsReady()。
+ */
+export function renderQuickCard(record, computed) {
+  const bills = record && record.quick && Array.isArray(record.quick.bills) ? record.quick.bills : [];
+  const items = [];
+  computed.bills.forEach((res, i) => {
+    if (res && res.ok) {
+      if (quickWaiting(res)) items.push({ no: i + 1, res, waiting: true, lines: null });
+      else items.push({ no: i + 1, res, waiting: false, lines: quickLines(bills[i], res) });
+    }
+  });
+  const sum = computed.sum && items.length >= 2 ? computed.sum : null;
+  const rec = { title: String((record && record.title) || '') };
+  const mc = document.createElement('canvas');
+  mc.width = CARD_WIDTH;
+  mc.height = 100;
+  const end = qlayout(mc.getContext('2d'), rec, items, sum, false);
+  const bottomPad = PAPER_X + TOOTH + 10;
+  const H = Math.max(COMPACT_HEIGHT, Math.ceil(end + Q_FOOT_H + bottomPad));
+  const canvas = document.createElement('canvas');
+  canvas.width = CARD_WIDTH;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  drawPaper(ctx, H);
+  qlayout(ctx, rec, items, sum, true);
+  drawStamp(ctx);
+  const fy = H - bottomPad - Q_FOOT_H + 24;
+  dashed(ctx, fy);
+  ctx.fillStyle = C.muted;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  font(ctx, 700, 30, SANS);
+  spaced(ctx, 4);
+  ctx.fillText(BRAND, CARD_WIDTH / 2 + 2, fy + 62);
+  spaced(ctx, 0);
+  font(ctx, 600, 26, SANS);
+  ctx.fillText('不用下載、不用登入', CARD_WIDTH / 2, fy + 106);
   return canvas;
 }
 

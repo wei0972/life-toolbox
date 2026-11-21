@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
-<meta name="description" content="聚餐、出遊後算誰該給誰多少。不用下載、不用登入、沒有廣告，資料只留在你的手機。">
+<meta name="description" content="聚餐、出遊現場輸入人數和金額，立刻算出每人多少。不用下載、不用登入、沒有廣告，資料只留在你的手機。">
 <title>多人分帳</title>
-<link rel="stylesheet" href="../shared/shell.css?v=20261120201636">
-<link rel="stylesheet" href="split.css?v=20261120201636">
+<link rel="stylesheet" href="../shared/shell.css?v=20261121093330">
+<link rel="stylesheet" href="split.css?v=20261121093330">
 </head>
 <body>
 <a class="skip" href="#main">跳到主要內容</a>
@@ -58,7 +58,32 @@
   </form>
 </dialog>
 
-<dialog id="dlgExp"aria-labelledby="exTitle">
+<dialog id="dlgAdv" aria-labelledby="daTitle" aria-describedby="daBody">
+  <form method="dialog" id="daForm">
+    <div class="dlg-head"><h2 id="daTitle">改用點人頭？</h2></div>
+    <div class="dlg-body">
+      <p id="daBody">改用點人頭之後，這筆會用進階畫面開啟，請再確認每筆是哪幾位分。</p>
+      <p id="daErr" class="err" role="alert" hidden></p>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn ghost" data-close id="daCancel">取消</button>
+      <button type="button" class="btn primary" id="daOk">改用點人頭</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgRevive" aria-labelledby="drTitle" aria-describedby="drBody">
+  <form method="dialog">
+    <div class="dlg-head"><h2 id="drTitle"></h2></div>
+    <div class="dlg-body"><p id="drBody"></p></div>
+    <div class="dlg-foot">
+      <button type="submit" class="btn danger" id="drDelete" value="delete">還是刪除</button>
+      <button type="submit" class="btn primary" id="drKeep" value="keep">保留別處的修改</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgExp" aria-labelledby="exTitle">
   <form method="dialog" id="exForm" novalidate>
     <div class="dlg-head"><h2 id="exTitle">新增支出</h2><button type="button" class="dlg-x" data-close aria-label="關閉">&times;</button></div>
     <div class="dlg-body">
@@ -76,13 +101,13 @@
         <select id="exPayer"></select>
       </div>
       <fieldset class="split">
-        <legend>分給誰</legend>
-        <div class="seg two" role="radiogroup" aria-label="一起分的算法">
-          <label class="seg-opt"><input type="radio" name="exMode" value="equal" checked><span>平均分</span></label>
-          <label class="seg-opt"><input type="radio" name="exMode" value="shares"><span>依份數分</span></label>
-        </div>
-        <p class="hint" id="exHint">每位成員選「不參與」「一起分」或「固定金額」。</p>
-        <div id="exRows"></div>
+        <legend>這筆有誰分</legend>
+        <p class="hint" id="exHint">點名字加入或拿掉，亮起來的人就是有分的。</p>
+        <div id="exWho" class="who"></div>
+        <details id="exAdv" class="adv">
+          <summary>有人付固定金額或份數不同<span class="chev" aria-hidden="true"></span></summary>
+          <div id="exRows"></div>
+        </details>
       </fieldset>
       <section class="preview" aria-live="polite" aria-label="這筆怎麼分">
         <div id="exPreview"></div>
@@ -100,13 +125,13 @@
   <form method="dialog">
     <div class="dlg-head"><h2 id="ckTitle">結算卡</h2><button type="button" class="dlg-x" data-close aria-label="關閉">&times;</button></div>
     <div class="dlg-body">
-      <div class="seg two" role="radiogroup" aria-label="結算卡樣式">
+      <div class="seg two" id="ckKinds" role="radiogroup" aria-label="結算卡樣式">
         <label class="seg-opt"><input type="radio" name="ckKind" value="compact" checked><span>精簡版</span></label>
         <label class="seg-opt"><input type="radio" name="ckKind" value="detail"><span>明細版</span></label>
       </div>
       <p class="hint" id="ckHint"></p>
       <div class="cardview" tabindex="0" aria-label="結算卡預覽，可捲動"><img id="ckImg" alt=""></div>
-      <p class="hint">圖上有成員暱稱和金額，傳出去前請先看一眼。</p>
+      <p class="hint" id="ckNote">圖上有成員暱稱和金額，傳出去前請先看一眼。</p>
     </div>
     <div class="dlg-foot">
       <button type="button" class="btn ghost" data-close>關閉</button>
@@ -116,6 +141,6 @@
   </form>
 </dialog>
 
-<script type="module" src="app.js?v=20261120201636"></script>
+<script type="module" src="app.js?v=20261121093330"></script>
 </body>
 </html>

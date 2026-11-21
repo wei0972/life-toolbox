@@ -1,7 +1,7 @@
 /*
  * 多人分帳：儲存與輸入處理（純邏輯，可在 Node 測試；碰到瀏覽器儲存的函式都接受「儲存物件」參數）
  */
-import { parseImport, LIMITS } from './core.js?v=20261120201636';
+import { parseImport, LIMITS } from './core.js?v=20261121093330';
 
 export const STORAGE_KEY = 'lt_split_v1';
 export const CORRUPT_KEY = 'lt_split_v1_corrupt';
@@ -27,6 +27,13 @@ export function todayLocal(d) {
   const x = d || new Date();
   const p = (n) => String(n).padStart(2, '0');
   return x.getFullYear() + '-' + p(x.getMonth() + 1) + '-' + p(x.getDate());
+}
+
+// 現場算錢的紀錄標題：YYYY/MM/DD HH:mm（手機當下時間）
+export function formatStamp(d) {
+  const x = d || new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return x.getFullYear() + '/' + p(x.getMonth() + 1) + '/' + p(x.getDate()) + ' ' + p(x.getHours()) + ':' + p(x.getMinutes());
 }
 
 /* ---------- 輸入正規化 ---------- */
@@ -64,6 +71,42 @@ export function parseFixed(raw, label) {
   return parseCount(raw, {
     label: label || '固定金額', allowZero: true, max: LIMITS.MAX_AMOUNT, maxText: '99,999,999 元',
   });
+}
+
+/**
+ * 金額欄：可以輸入「1000+500」這種加法。接受半形與全形加號、千分位逗號。
+ * 回傳 { ok, blank, values, total, pending, reason }
+ * - 空白：ok、blank，total 0（還沒填）
+ * - 結尾多一個加號（例如「1000+」）：當成還在輸入，pending 為真，先算已輸入的部分
+ * - 看不懂（字母、小數點、負數、連續兩個加號、開頭的加號、加總超過上限）：ok 為 false，附白話原因，total 0
+ * values 只放大於 0 的項目
+ */
+export function parseMoneyExpr(raw, label) {
+  const lb = label || '金額';
+  const s = normalizeNumberText(raw);
+  const fail = (reason) => ({ ok: false, blank: false, values: [], total: 0, pending: false, reason });
+  if (s === '') return { ok: true, blank: true, values: [], total: 0, pending: false };
+  const one = (t) => parseCount(t, { label: lb, allowZero: true, max: LIMITS.MAX_AMOUNT, maxText: '99,999,999 元' });
+  if (!s.includes('+')) {
+    const r = one(s);
+    if (!r.ok) return fail(r.reason);
+    return { ok: true, blank: false, values: r.value > 0 ? [r.value] : [], total: r.value, pending: false };
+  }
+  let body = s;
+  let pending = false;
+  if (body.endsWith('+')) { pending = true; body = body.slice(0, -1); }
+  const terms = body.split('+');
+  if (terms.some((t) => t === '')) return fail(lb + '的加號前後都要有數字');
+  const values = [];
+  let total = 0;
+  for (const t of terms) {
+    const r = one(t);
+    if (!r.ok) return fail(r.reason);
+    if (r.value > 0) values.push(r.value);
+    total += r.value;
+  }
+  if (total > LIMITS.MAX_AMOUNT) return fail(lb + '加起來最多 99,999,999 元');
+  return { ok: true, blank: false, values, total, pending };
 }
 
 export function parseShares(raw, label) {
@@ -266,12 +309,14 @@ export function makeBaseline(state) {
  * 合併：以 stored（目前儲存中的最新內容）為底，只套用 mem 這個分頁自上次同步（baseline）以來
  * 新增、修改或刪除的活動。回傳 { state, conflicts }：conflicts 是「另一個分頁也動過同一個活動」的編號；
  * deletedElsewhere 是「別處已刪掉、這邊又改過」的活動編號，不會寫進 state，要由使用者決定。
+ * modifiedElsewhere 是「這邊刪掉、別處在這之後又改過」的活動編號：先保留別處的版本留在 state 裡，由使用者決定要不要還是刪除。
  */
 export function mergeState(stored, mem, baseline) {
   const base = baseline instanceof Map ? baseline : new Map(Object.entries(baseline || {}));
   const acts = stored.activities.slice();
   const conflicts = [];
   const deletedElsewhere = [];
+  const modifiedElsewhere = [];
   const memIds = new Set(mem.activities.map((a) => a.id));
   for (const a of mem.activities) {
     const fp = stable(a);
@@ -290,7 +335,7 @@ export function mergeState(stored, mem, baseline) {
     if (memIds.has(id)) continue;
     const i = acts.findIndex((x) => x.id === id);
     if (i < 0) continue;
-    if (stable(acts[i]) !== base.get(id)) conflicts.push(id);
+    if (stable(acts[i]) !== base.get(id)) { modifiedElsewhere.push(id); continue; } // 我刪了，但別處在這之後改過：先保留，交給使用者決定
     acts.splice(i, 1);
   }
   const ids = new Set(acts.map((a) => a.id));
@@ -298,7 +343,7 @@ export function mergeState(stored, mem, baseline) {
   if (mem.currentId && ids.has(mem.currentId)) currentId = mem.currentId;
   else if (stored.currentId && ids.has(stored.currentId)) currentId = stored.currentId;
   else if (acts[0]) currentId = acts[0].id;
-  return { state: { version: 1, currentId, activities: acts }, conflicts, deletedElsewhere };
+  return { state: { version: 1, currentId, activities: acts }, conflicts, deletedElsewhere, modifiedElsewhere };
 }
 
 /**
@@ -328,7 +373,7 @@ export function saveMerged(storage, mem, baseline) {
   } catch (e) {
     return { ok: false };
   }
-  return { ok: true, state: m.state, conflicts: m.conflicts, deletedElsewhere: m.deletedElsewhere, stashed };
+  return { ok: true, state: m.state, conflicts: m.conflicts, deletedElsewhere: m.deletedElsewhere, modifiedElsewhere: m.modifiedElsewhere, stashed };
 }
 
 export function clearAll(storage) {

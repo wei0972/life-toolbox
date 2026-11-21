@@ -277,6 +277,93 @@ function validDate(s) {
   return d <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
 }
 
+// 快速計算（quick）欄位的上限；quick.js 的 QUICK_LIMITS 數值必須與此一致
+export const QUICK_CORE_LIMITS = Object.freeze({
+  MAX_PEOPLE: 99,
+  MAX_PARTS: 5,
+  MAX_ITEMS: 30,
+  MAX_BILLS: 10,
+});
+
+const QUICK_MODES = ['even', 'parts', 'free', 'fixed'];
+
+function isIntIn(v, min, max) {
+  return typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
+}
+
+// 檢查 quick 欄位的結構（只管格式與型別，數值合不合理由 quick.js 的計算判定）
+function checkQuick(q, out) {
+  if (!isObj(q)) { out.push('快速計算資料格式不正確'); return; }
+  const L = QUICK_CORE_LIMITS;
+  if (!Array.isArray(q.bills) || q.bills.length < 1 || q.bills.length > L.MAX_BILLS) {
+    out.push('快速計算的帳單必須是 1 到 ' + L.MAX_BILLS + ' 張');
+    return;
+  }
+  const billIds = new Set();
+  q.bills.forEach((b, i) => {
+    const label = '第 ' + (i + 1) + ' 張帳單';
+    if (!isObj(b)) { out.push(label + '格式不正確'); return; }
+    if (checkId(label, b.id, out)) {
+      if (billIds.has(b.id)) out.push(label + '的編號重複');
+      billIds.add(b.id);
+    }
+    if (!isIntIn(b.people, 0, L.MAX_PEOPLE)) out.push(label + '的人數格式不正確');
+    if (!isIntIn(b.total, 0, LIMITS.MAX_AMOUNT)) out.push(label + '的總額格式不正確');
+    if (typeof b.mode !== 'string' || !QUICK_MODES.includes(b.mode)) out.push(label + '的算法格式不正確');
+    if (typeof b.roundTens !== 'boolean') out.push(label + '的湊整設定格式不正確');
+
+    if (hasOwn(b, 'parts')) {
+      if (!Array.isArray(b.parts) || b.parts.length > L.MAX_PARTS) {
+        out.push(label + '的另外算清單格式不正確或超過 ' + L.MAX_PARTS + ' 筆');
+      } else {
+        const partIds = new Set();
+        b.parts.forEach((p, j) => {
+          const pl = label + '的第 ' + (j + 1) + ' 筆另外算';
+          if (!isObj(p)) { out.push(pl + '格式不正確'); return; }
+          if (checkId(pl, p.id, out)) {
+            if (partIds.has(p.id)) out.push(pl + '的編號重複');
+            partIds.add(p.id);
+          }
+          checkText(pl + '的名稱', p.name, LIMITS.MAX_NAME, true, out);
+          if (!Array.isArray(p.items) || p.items.length > L.MAX_ITEMS || !p.items.every((v) => isIntIn(v, 1, LIMITS.MAX_AMOUNT))) {
+            out.push(pl + '的金額清單格式不正確');
+          }
+          if (typeof p.service !== 'boolean') out.push(pl + '的服務費設定格式不正確');
+          if (!isIntIn(p.people, 0, L.MAX_PEOPLE)) out.push(pl + '的人數格式不正確');
+        });
+      }
+    }
+    if (hasOwn(b, 'free')) {
+      const f = b.free;
+      if (!isObj(f) || (f.by !== 'all' && f.by !== 'cover')
+        || !isIntIn(f.count, 0, L.MAX_PEOPLE) || !isIntIn(f.coverers, 0, L.MAX_PEOPLE) || !isIntIn(f.each, 0, L.MAX_PEOPLE)) {
+        out.push(label + '的「有人不用付」資料格式不正確');
+      }
+    }
+    if (hasOwn(b, 'fixed')) {
+      const f = b.fixed;
+      if (!isObj(f) || !isIntIn(f.count, 0, L.MAX_PEOPLE) || !isIntIn(f.amount, 0, LIMITS.MAX_AMOUNT)) {
+        out.push(label + '的「固定金額」資料格式不正確');
+      }
+    }
+  });
+}
+
+// 依白名單重建 quick（呼叫前已通過 checkQuick）
+function cleanQuick(q) {
+  return {
+    bills: q.bills.map((b) => {
+      const x = { id: b.id, people: b.people, total: b.total, mode: b.mode, roundTens: b.roundTens };
+      if (hasOwn(b, 'parts')) {
+        x.parts = b.parts.map((p) => ({ id: p.id, name: p.name, items: p.items.slice(), service: p.service, people: p.people }));
+      }
+      if (hasOwn(b, 'free')) x.free = { by: b.free.by, count: b.free.count, coverers: b.free.coverers, each: b.free.each };
+      if (hasOwn(b, 'fixed')) x.fixed = { count: b.fixed.count, amount: b.fixed.amount };
+      return x;
+    }),
+  };
+}
+
 /**
  * 結構檢查，回傳錯誤訊息陣列（空陣列代表結構正確）。
  * 只檢查格式與型別；金額、份數等數值是否合理屬於「單筆計算錯誤」，由 computeExpense 判定。
@@ -333,6 +420,7 @@ export function validateActivity(activity) {
       }
     });
   }
+  if (hasOwn(activity, 'quick')) checkQuick(activity.quick, out);
   return out;
 }
 
@@ -350,6 +438,7 @@ function cleanActivity(a) {
       return x;
     }),
   };
+  if (hasOwn(a, 'quick')) out.quick = cleanQuick(a.quick);
   return out;
 }
 
