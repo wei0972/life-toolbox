@@ -2,9 +2,9 @@
  * 結算卡：用 canvas 直接畫成圖片（收據造型，奶油色系）。寬固定 1080 像素。
  * 精簡版 1080x1350（內容太多時自動縮小字級、再不夠才加高）；明細版高度依內容增加。
  */
-import { formatMoney } from './explain.js?v=20261121093330';
-import { partLabel } from './quick.js?v=20261121093330';
-import { BRAND } from '../shared/shell.js?v=20261121093330';
+import { formatMoney } from './explain.js?v=20261121222228';
+import { resultRows, collectedLine, rosterName } from './quick.js?v=20261121222228';
+import { BRAND } from '../shared/shell.js?v=20261121222228';
 
 export const CARD_WIDTH = 1080;
 export const COMPACT_HEIGHT = 1350;
@@ -437,61 +437,41 @@ const money = formatMoney;
 export function quickWaiting(res) {
   if (!res || !res.ok) return false;
   if (res.incomplete) return true;
-  return res.mode === 'parts' && Array.isArray(res.parts) && res.parts.length === 0;
+  const partsOn = Array.isArray(res.on) ? res.on.includes('parts') : res.mode === 'parts';
+  if (partsOn && Array.isArray(res.parts) && res.parts.length === 0) return true;
+  // 有名單：有人付固定金額、金額還空著（0）時，同樣當成還沒填完
+  if (res.named && Array.isArray(res.on) && res.on.includes('fixed') && res.persons.some((p) => p.kind === 'fixed' && p.amount === 0)) return true;
+  // 固定金額：人數填了、金額還空著（0）時當成還沒填完，不把「付 0 元」當答案
+  if (res.mode === 'fixed' && !res.named) {
+    const fx = res.rows.find((r) => r.role === 'fixed');
+    if (fx && fx.amount === 0) return true;
+  }
+  return false;
 }
 
-const eachWord = (n) => (n === 1 ? '付' : '各付');
-
 /**
- * 一張帳單的結果文字，畫面與結算卡共用。
- * 回傳 { rows:[{role,count,amount,partId?,label,big}], notes:[{kind,text}], diff:{text,diff} }；金額 0 的列 amount 為 null（寫「不用付」）
+ * 一張帳單的結果文字，畫面與結算卡共用詞（文字由 quick.js 的 resultRows／collectedLine 產生）。
+ * 回傳 { rows:[{label, prefix, plus, amount, big}], notes:[{kind,text}], diff:{text,diff} }
+ * 只有一列（平分）時 label 是「每人」；其餘列 label 是「7 人 有額外付費」，金額前依 prefix 加「每人」。
  */
-export function quickLines(bill, res) {
+export function quickLines(bill, res, roster) {
+  const list = resultRows(bill, res, roster);
+  const body = list.filter((r) => !r.hint);
   const rows = [];
-  const coverMode = res.rows.some((r) => r.role === 'cover');
-  const hasParts = !!(res.parts && res.parts.length > 0);
-  for (const r of res.rows) {
-    const zero = r.amount === 0 && r.role !== 'free';
-    let label;
-    if (r.role === 'each') {
-      if (res.mode === 'even' || res.incomplete) label = zero ? '每人不用付' : '每人';
-      else if (res.mode === 'free' && !coverMode) label = zero ? r.count + ' 人不用付' : r.count + ' 人' + eachWord(r.count);
-      else label = zero ? '其餘 ' + r.count + ' 人不用付' : '其餘 ' + r.count + ' 人' + eachWord(r.count);
-    } else if (r.role === 'base') {
-      label = zero ? '沒分到任何一筆的人不用付' : hasParts ? '每人先付' : '每人';
-    } else if (r.role === 'add') {
-      label = '有分' + partLabel(bill, r.partId) + '的 ' + r.count + ' 人，' + (zero ? '不用再加' : '每人再加');
-    } else if (r.role === 'cover') {
-      label = zero ? '幫忙付的 ' + r.count + ' 人不用付' : '幫忙付的 ' + r.count + ' 人' + eachWord(r.count);
-    } else if (r.role === 'free') {
-      label = r.count + ' 人不用付';
-    } else {
-      label = zero ? r.count + ' 人不用付' : r.count + ' 人' + eachWord(r.count);
+  const notes = [];
+  for (const r of list) {
+    if (r.hint) {
+      notes.push({ kind: 'multi', text: r.note });
+      continue;
     }
+    const single = body.length === 1 && r.who === '' && r.note === '';
+    const label = single ? '每人' : [r.who, r.note].filter(Boolean).join(' ');
     rows.push({
-      role: r.role, count: r.count, amount: r.role === 'free' || zero ? null : r.amount,
-      partId: r.partId, label, big: res.rows.length === 1,
+      label, prefix: !single && r.each ? '每人' : '', plus: r.plus === true, amount: r.amount, big: body.length === 1,
+      names: r.names || '',
     });
   }
-  const notes = [];
-  if (res.combined) {
-    const c = res.combined;
-    let t = '也就是：有分的 ' + c.withCount + ' 人' + eachWord(c.withCount) + ' ' + money(c.withAmount) + ' 元';
-    if (c.withoutCount > 0) {
-      t += c.withoutAmount === 0 ? '，沒分的 ' + c.withoutCount + ' 人不用付'
-        : '，沒分的 ' + c.withoutCount + ' 人' + eachWord(c.withoutCount) + ' ' + money(c.withoutAmount) + ' 元';
-    }
-    notes.push({ kind: 'combined', text: t });
-  } else if (res.parts && res.parts.length >= 2) {
-    notes.push({ kind: 'multi', text: '每個人把自己有分到的加上去，就是要付的金額' });
-  }
-  for (const id of res.skipped || []) notes.push({ kind: 'skipped', text: partLabel(bill, id) + '還沒填完，先不算' });
-  if (res.incomplete) notes.push({ kind: 'incomplete', text: '還沒填完，先照平分算' });
-  let dt = '全部收齊 ' + money(res.collected) + ' 元，';
-  if (res.diff > 0) dt += '還差 ' + money(res.diff) + ' 元，由付錢的人補';
-  else if (res.diff < 0) dt += '比帳單多 ' + money(-res.diff) + ' 元';
-  else dt += '剛好';
-  return { rows, notes, diff: { text: dt, diff: res.diff } };
+  return { rows, notes, diff: { text: collectedLine(res), diff: res.diff } };
 }
 
 function wrapChars(ctx, text, maxW) {
@@ -509,7 +489,7 @@ function wrapChars(ctx, text, maxW) {
 
 const Q_FOOT_H = 170;
 
-function qlayout(ctx, rec, items, sum, draw) {
+function qlayout(ctx, rec, items, sum, plist, draw) {
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';
   spaced(ctx, 0);
@@ -561,7 +541,7 @@ function qlayout(ctx, rec, items, sum, draw) {
       }
       y += 126;
       y += 22;
-      if (idx < items.length - 1 || sum) {
+      if (idx < items.length - 1 || sum || plist) {
         if (draw) dashed(ctx, y);
         y += 40;
       }
@@ -569,27 +549,31 @@ function qlayout(ctx, rec, items, sum, draw) {
     }
     const lines = it.lines;
     lines.rows.forEach((r, i) => {
-      const amtText = r.amount === null ? '' : formatMoney(r.amount);
+      const amtText = (r.plus ? '＋' : '') + formatMoney(r.amount);
       const size = r.big ? 76 : 48;
       font(ctx, 800, size, MONO);
-      const aw = r.amount === null ? 0 : ctx.measureText(amtText).width + 56;
+      const aw = ctx.measureText(amtText).width + 56;
+      font(ctx, 700, 30, SANS);
+      const pw = r.prefix ? ctx.measureText(r.prefix).width + 14 : 0;
       const lblSize = r.big ? 44 : 33;
       font(ctx, 700, lblSize, SANS);
-      const label = fit(ctx, r.label, W - aw - 24);
+      const label = fit(ctx, r.label, W - aw - pw - 24);
       const rowH = r.big ? 112 : 78;
       if (draw) {
         ctx.fillStyle = C.ink;
         ctx.textAlign = 'left';
         font(ctx, 700, lblSize, SANS);
         ctx.fillText(label, L, y + rowH * 0.66);
-        if (r.amount !== null) {
-          ctx.textAlign = 'right';
+        ctx.textAlign = 'right';
+        font(ctx, 700, 30, SANS);
+        ctx.fillText('元', R, y + rowH * 0.66);
+        font(ctx, 800, size, MONO);
+        ctx.fillText(amtText, R - 46, y + rowH * 0.66);
+        if (r.prefix) {
           font(ctx, 700, 30, SANS);
-          ctx.fillText('元', R, y + rowH * 0.66);
-          font(ctx, 800, size, MONO);
-          ctx.fillText(amtText, R - 46, y + rowH * 0.66);
-          ctx.textAlign = 'left';
+          ctx.fillText(r.prefix, R - 46 - (aw - 56) - 14, y + rowH * 0.66);
         }
+        ctx.textAlign = 'left';
         if (i < lines.rows.length - 1) dotted(ctx, L, R, y + rowH - 2);
       }
       y += rowH;
@@ -608,11 +592,41 @@ function qlayout(ctx, rec, items, sum, draw) {
       }
     }
     y += 22;
-    if (idx < items.length - 1 || sum) {
+    if (idx < items.length - 1 || sum || plist) {
       if (draw) dashed(ctx, y);
       y += 40;
     }
   });
+
+  if (plist) {
+    y = sectionHead(ctx, '每個人要付', y, draw);
+    for (const r of plist.rows) {
+      const amtText = formatMoney(r.amount);
+      font(ctx, 800, 44, MONO);
+      const aw = ctx.measureText(amtText).width + 56;
+      font(ctx, 700, 36, SANS);
+      const label = fit(ctx, r.label, W - aw - 24);
+      if (draw) {
+        ctx.fillStyle = r.amount === 0 ? C.muted : C.ink;
+        ctx.textAlign = 'left';
+        font(ctx, 700, 36, SANS);
+        ctx.fillText(label, L, y + 46);
+        ctx.textAlign = 'right';
+        font(ctx, 700, 28, SANS);
+        ctx.fillText('元', R, y + 46);
+        font(ctx, 800, 44, MONO);
+        ctx.fillText(amtText, R - 44, y + 46);
+        ctx.textAlign = 'left';
+        dotted(ctx, L, R, y + 64);
+      }
+      y += 68;
+    }
+    y += 16;
+    if (sum) {
+      if (draw) dashed(ctx, y);
+      y += 40;
+    }
+  }
 
   if (sum) {
     y = sectionHead(ctx, '每人合計', y, draw);
@@ -634,25 +648,44 @@ function qlayout(ctx, rec, items, sum, draw) {
 }
 
 /**
+ * 有名單時卡片下半部的「每個人要付」：每人一列（名字、金額）；超過 20 人只列分組（幾人、每人多少）。
+ * 沒有名單、有帳單算不出來、或有帳單還沒填完時回 null（不能把暫時的平分金額印成答案）。
+ */
+export function quickPersonList(roster, computed, items) {
+  if (!Array.isArray(roster) || roster.length === 0 || !computed || !Array.isArray(computed.persons)) return null;
+  if (items.length !== computed.bills.length || items.some((it) => it.waiting)) return null;
+  if (roster.length <= 20) {
+    return { grouped: false, rows: computed.persons.map((p) => ({ label: rosterName(roster, p.id), amount: p.amount })) };
+  }
+  const by = new Map();
+  for (const p of computed.persons) by.set(p.amount, (by.get(p.amount) || 0) + 1);
+  const rows = [...by.entries()].sort((a, b) => b[0] - a[0])
+    .map(([amount, count]) => ({ label: count + ' 人', amount }));
+  return { grouped: true, rows };
+}
+
+/**
  * 畫現場算錢的結算卡：收據造型，寬 1080、高至少 1350，內容多就加高。
  * record：帶 quick 的活動（用到 title）；computed：computeRecord(record.quick) 的結果。
  * 呼叫前請先 await fontsReady()。
  */
 export function renderQuickCard(record, computed) {
   const bills = record && record.quick && Array.isArray(record.quick.bills) ? record.quick.bills : [];
+  const roster = record && record.quick && Array.isArray(record.quick.roster) ? record.quick.roster : [];
   const items = [];
   computed.bills.forEach((res, i) => {
     if (res && res.ok) {
       if (quickWaiting(res)) items.push({ no: i + 1, res, waiting: true, lines: null });
-      else items.push({ no: i + 1, res, waiting: false, lines: quickLines(bills[i], res) });
+      else items.push({ no: i + 1, res, waiting: false, lines: quickLines(bills[i], res, roster) });
     }
   });
+  const plist = quickPersonList(roster, computed, items);
   const sum = computed.sum && items.length >= 2 ? computed.sum : null;
   const rec = { title: String((record && record.title) || '') };
   const mc = document.createElement('canvas');
   mc.width = CARD_WIDTH;
   mc.height = 100;
-  const end = qlayout(mc.getContext('2d'), rec, items, sum, false);
+  const end = qlayout(mc.getContext('2d'), rec, items, sum, plist, false);
   const bottomPad = PAPER_X + TOOTH + 10;
   const H = Math.max(COMPACT_HEIGHT, Math.ceil(end + Q_FOOT_H + bottomPad));
   const canvas = document.createElement('canvas');
@@ -660,7 +693,7 @@ export function renderQuickCard(record, computed) {
   canvas.height = H;
   const ctx = canvas.getContext('2d');
   drawPaper(ctx, H);
-  qlayout(ctx, rec, items, sum, true);
+  qlayout(ctx, rec, items, sum, plist, true);
   drawStamp(ctx);
   const fy = H - bottomPad - Q_FOOT_H + 24;
   dashed(ctx, fy);

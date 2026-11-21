@@ -6,8 +6,8 @@
 <meta name="color-scheme" content="light">
 <meta name="description" content="聚餐、出遊現場輸入人數和金額，立刻算出每人多少。不用下載、不用登入、沒有廣告，資料只留在你的手機。">
 <title>多人分帳</title>
-<link rel="stylesheet" href="../shared/shell.css?v=20261121093330">
-<link rel="stylesheet" href="split.css?v=20261121093330">
+<link rel="stylesheet" href="../shared/shell.css?v=20261121222228">
+<link rel="stylesheet" href="split.css?v=20261121222228">
 </head>
 <body>
 <a class="skip" href="#main">跳到主要內容</a>
@@ -36,6 +36,33 @@
   </form>
 </dialog>
 
+<dialog id="dlgTwo" class="top" aria-labelledby="twTitle" aria-describedby="twBody">
+  <form method="dialog" id="twForm" novalidate>
+    <div class="dlg-head"><h2 id="twTitle">一次只能算一種情況</h2><button type="button" class="dlg-x" data-close aria-label="關閉">&times;</button></div>
+    <div class="dlg-body"><p id="twBody">要兩種一起算，需要先有名單，才分得出是哪幾個人。</p></div>
+    <div class="dlg-foot stack">
+      <button type="button" class="btn primary" id="twBoth">兩種一起算（建立名單）</button>
+      <button type="button" class="btn ghost" id="twOnly">只算新的這一種</button>
+      <button type="button" class="btn ghost" data-close id="twCancel">取消</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgName" class="top" aria-labelledby="nmTitle">
+  <form method="dialog" id="nmForm" novalidate>
+    <div class="dlg-head"><h2 id="nmTitle">改名字</h2><button type="button" class="dlg-x" data-close aria-label="關閉">&times;</button></div>
+    <div class="dlg-body">
+      <label for="nmInput" class="lbl">名字（最多 12 字）</label>
+      <input id="nmInput" type="text" autocomplete="off" maxlength="12" enterkeyhint="done">
+      <p id="nmNote" class="dlg-hint"></p>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn ghost" data-close>取消</button>
+      <button type="submit" class="btn primary" id="nmOk">確定</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlgConfirm" aria-labelledby="dcTitle" aria-describedby="dcBody">
   <form method="dialog">
     <div class="dlg-head"><h2 id="dcTitle"></h2></div>
@@ -54,20 +81,6 @@
     <div class="dlg-foot">
       <button type="submit" class="btn ghost" id="dgDrop" value="drop">不用了</button>
       <button type="submit" class="btn primary" id="dgKeep" value="keep">留下來</button>
-    </div>
-  </form>
-</dialog>
-
-<dialog id="dlgAdv" aria-labelledby="daTitle" aria-describedby="daBody">
-  <form method="dialog" id="daForm">
-    <div class="dlg-head"><h2 id="daTitle">改用點人頭？</h2></div>
-    <div class="dlg-body">
-      <p id="daBody">改用點人頭之後，這筆會用進階畫面開啟，請再確認每筆是哪幾位分。</p>
-      <p id="daErr" class="err" role="alert" hidden></p>
-    </div>
-    <div class="dlg-foot">
-      <button type="button" class="btn ghost" data-close id="daCancel">取消</button>
-      <button type="button" class="btn primary" id="daOk">改用點人頭</button>
     </div>
   </form>
 </dialog>
@@ -141,6 +154,6 @@
   </form>
 </dialog>
 
-<script type="module" src="app.js?v=20261121093330"></script>
+<script type="module" src="app.js?v=20261121222228"></script>
 </body>
 </html>

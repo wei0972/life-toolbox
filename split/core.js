@@ -291,10 +291,35 @@ function isIntIn(v, min, max) {
   return typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
 }
 
+const QUICK_ON = ['parts', 'free', 'fixed'];
+
+// who／on 這類「字串清單」的格式檢查（內容是否在名單內由 cleanQuick 整理）
+function checkStrList(label, v, max, out) {
+  if (!Array.isArray(v) || v.length > max || !v.every((x) => typeof x === 'string' && x.length <= LIMITS.MAX_ID)) {
+    out.push(label + '格式不正確');
+  }
+}
+
 // 檢查 quick 欄位的結構（只管格式與型別，數值合不合理由 quick.js 的計算判定）
 function checkQuick(q, out) {
   if (!isObj(q)) { out.push('快速計算資料格式不正確'); return; }
   const L = QUICK_CORE_LIMITS;
+  if (hasOwn(q, 'roster')) {
+    if (!Array.isArray(q.roster) || q.roster.length > L.MAX_PEOPLE) {
+      out.push('快速計算的名單格式不正確或超過 ' + L.MAX_PEOPLE + ' 人');
+    } else {
+      const rids = new Set();
+      q.roster.forEach((m, i) => {
+        const rl = '名單第 ' + (i + 1) + ' 位';
+        if (!isObj(m)) { out.push(rl + '格式不正確'); return; }
+        if (checkId(rl, m.id, out)) {
+          if (rids.has(m.id)) out.push(rl + '的編號重複');
+          rids.add(m.id);
+        }
+        checkText(rl + '的名字', m.name, LIMITS.MAX_NAME, true, out);
+      });
+    }
+  }
   if (!Array.isArray(q.bills) || q.bills.length < 1 || q.bills.length > L.MAX_BILLS) {
     out.push('快速計算的帳單必須是 1 到 ' + L.MAX_BILLS + ' 張');
     return;
@@ -311,14 +336,16 @@ function checkQuick(q, out) {
     if (!isIntIn(b.total, 0, LIMITS.MAX_AMOUNT)) out.push(label + '的總額格式不正確');
     if (typeof b.mode !== 'string' || !QUICK_MODES.includes(b.mode)) out.push(label + '的算法格式不正確');
     if (typeof b.roundTens !== 'boolean') out.push(label + '的湊整設定格式不正確');
+    if (hasOwn(b, 'who')) checkStrList(label + '的參加名單', b.who, L.MAX_PEOPLE, out);
+    if (hasOwn(b, 'on')) checkStrList(label + '的情況清單', b.on, QUICK_ON.length * 2, out);
 
     if (hasOwn(b, 'parts')) {
       if (!Array.isArray(b.parts) || b.parts.length > L.MAX_PARTS) {
-        out.push(label + '的另外算清單格式不正確或超過 ' + L.MAX_PARTS + ' 筆');
+        out.push(label + '的額外付費清單格式不正確或超過 ' + L.MAX_PARTS + ' 筆');
       } else {
         const partIds = new Set();
         b.parts.forEach((p, j) => {
-          const pl = label + '的第 ' + (j + 1) + ' 筆另外算';
+          const pl = label + '的第 ' + (j + 1) + ' 筆額外付費';
           if (!isObj(p)) { out.push(pl + '格式不正確'); return; }
           if (checkId(pl, p.id, out)) {
             if (partIds.has(p.id)) out.push(pl + '的編號重複');
@@ -330,38 +357,88 @@ function checkQuick(q, out) {
           }
           if (typeof p.service !== 'boolean') out.push(pl + '的服務費設定格式不正確');
           if (!isIntIn(p.people, 0, L.MAX_PEOPLE)) out.push(pl + '的人數格式不正確');
+          if (hasOwn(p, 'who')) checkStrList(pl + '的名單', p.who, L.MAX_PEOPLE, out);
         });
       }
     }
     if (hasOwn(b, 'free')) {
       const f = b.free;
       if (!isObj(f) || (f.by !== 'all' && f.by !== 'cover')
-        || !isIntIn(f.count, 0, L.MAX_PEOPLE) || !isIntIn(f.coverers, 0, L.MAX_PEOPLE) || !isIntIn(f.each, 0, L.MAX_PEOPLE)) {
+        || !isIntIn(f.count, 0, L.MAX_PEOPLE) || !isIntIn(f.coverers, 0, L.MAX_PEOPLE)
+        || (hasOwn(f, 'each') && !isIntIn(f.each, 0, L.MAX_PEOPLE))) {
         out.push(label + '的「有人不用付」資料格式不正確');
+      } else {
+        if (hasOwn(f, 'who')) checkStrList(label + '的不用付名單', f.who, L.MAX_PEOPLE, out);
+        if (hasOwn(f, 'coverWho')) checkStrList(label + '的幫忙付名單', f.coverWho, L.MAX_PEOPLE, out);
       }
     }
     if (hasOwn(b, 'fixed')) {
       const f = b.fixed;
       if (!isObj(f) || !isIntIn(f.count, 0, L.MAX_PEOPLE) || !isIntIn(f.amount, 0, LIMITS.MAX_AMOUNT)) {
         out.push(label + '的「固定金額」資料格式不正確');
+      } else if (hasOwn(f, 'who')) {
+        checkStrList(label + '的固定金額名單', f.who, L.MAX_PEOPLE, out);
       }
     }
   });
 }
 
-// 依白名單重建 quick（呼叫前已通過 checkQuick）
+// 依白名單重建 quick（呼叫前已通過 checkQuick）。
+// 沒有名單（roster 不存在或空陣列）：移除所有 who／on；有名單：整理成不變式（見 PLAN_v3 第 1 節）。
 function cleanQuick(q) {
-  return {
-    bills: q.bills.map((b) => {
-      const x = { id: b.id, people: b.people, total: b.total, mode: b.mode, roundTens: b.roundTens };
+  const roster = hasOwn(q, 'roster') && q.roster.length > 0 ? q.roster.map((m) => ({ id: m.id, name: m.name })) : null;
+  const rosterIds = roster ? roster.map((m) => m.id) : [];
+  // 取 list 與 allowed 的交集，依名單順序、不重複
+  const pick = (list, allowed) => {
+    const have = new Set(Array.isArray(list) ? list : []);
+    return rosterIds.filter((id) => have.has(id) && (allowed === null || allowed.has(id)));
+  };
+  const bills = q.bills.map((b) => {
+    const x = { id: b.id, people: b.people, total: b.total, mode: b.mode, roundTens: b.roundTens };
+    if (!roster) {
       if (hasOwn(b, 'parts')) {
         x.parts = b.parts.map((p) => ({ id: p.id, name: p.name, items: p.items.slice(), service: p.service, people: p.people }));
       }
-      if (hasOwn(b, 'free')) x.free = { by: b.free.by, count: b.free.count, coverers: b.free.coverers, each: b.free.each };
+      if (hasOwn(b, 'free')) {
+        const f = b.free;
+        let count = f.count;
+        // v2 舊資料：free 帶 each。by==='cover' 時不用付的人數 = 幫忙的人數 × 每人幫幾位（上限 99，超過一樣算「人數太多」）
+        if (hasOwn(f, 'each') && f.by === 'cover') count = Math.min(QUICK_CORE_LIMITS.MAX_PEOPLE, f.coverers * f.each);
+        x.free = { by: f.by, count, coverers: f.coverers };
+      }
       if (hasOwn(b, 'fixed')) x.fixed = { count: b.fixed.count, amount: b.fixed.amount };
       return x;
-    }),
-  };
+    }
+    // 沒有 who 鍵（缺選填欄位的匯入資料）：用名單前 people 位；who 鍵存在（含空陣列）就照它
+    const P = hasOwn(b, 'who') ? pick(b.who, null) : rosterIds.slice(0, b.people);
+    const inP = new Set(P);
+    x.people = P.length;
+    if (hasOwn(b, 'parts')) {
+      x.parts = b.parts.map((p) => {
+        const w = pick(p.who, inP);
+        return { id: p.id, name: p.name, items: p.items.slice(), service: p.service, people: w.length, who: w };
+      });
+    }
+    if (hasOwn(b, 'free')) {
+      const f = b.free;
+      const who = pick(f.who, inP);
+      const coverWho = pick(f.coverWho, inP);
+      x.free = { by: f.by, count: who.length, coverers: coverWho.length, who, coverWho };
+    }
+    if (hasOwn(b, 'fixed')) {
+      const who = pick(b.fixed.who, inP);
+      x.fixed = { count: who.length, amount: b.fixed.amount, who };
+    }
+    x.who = P;
+    const onSet = new Set(Array.isArray(b.on) ? b.on : []);
+    x.on = QUICK_ON.filter((k) => onSet.has(k));
+    x.mode = x.on[0] || 'even';
+    return x;
+  });
+  const out = {};
+  if (roster) out.roster = roster;
+  out.bills = bills;
+  return out;
 }
 
 /**

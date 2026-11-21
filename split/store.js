@@ -1,7 +1,7 @@
 /*
  * 多人分帳：儲存與輸入處理（純邏輯，可在 Node 測試；碰到瀏覽器儲存的函式都接受「儲存物件」參數）
  */
-import { parseImport, LIMITS } from './core.js?v=20261121093330';
+import { parseImport, LIMITS } from './core.js?v=20261121222228';
 
 export const STORAGE_KEY = 'lt_split_v1';
 export const CORRUPT_KEY = 'lt_split_v1_corrupt';
